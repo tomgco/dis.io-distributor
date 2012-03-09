@@ -2,7 +2,7 @@
   "author": "Tom Gallacher <tomgallaher23@gmail.com> (tomg.co)",
   "name": "dis.io-distributor",
   "description": "Distributor component for dis.io",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "repository": {
     "url": ""
   },
@@ -11,9 +11,12 @@
     "node": "~0.6.11"
   },
   "dependencies": {
-      "socket.io": "*"
-    , "zmq": "2.0.X"
+    "socket.io": "*",
+    "zmq": "2.0.X"
   },
   "devDependencies": {},
-  "optionalDependencies": {}
+  "optionalDependencies": {},
+  "scripts": {
+    "start": "node server.js"
+  }
 }
