@@ -80,6 +80,7 @@ function zmqConnect(service) {
   socket.connect(uri);
   console.log('connected to -> ' + uri);
   connectedTo = uri;
+  setTimeout(function() {socket.send('object{"action":"requestTask"}');}, 4000);
   socket.on('message', function(buf) {
     console.log(buf.toString());
     // setTimeout(function() {socket.send('{}');}, 4000);
