@@ -5,7 +5,10 @@ var socket = require('socket.io')
   // , io = socket.listen(8282)
   , managers = require('./lib/discovery').managers
   , context  = require('zmq')
+  , OnlineHelper = require('./lib/onlineHelper')
   , processingQueue = []
+  , connectedTo = null
+  , client
   ;
 
 socket.identity = 'distributor' + process.pid;
@@ -45,38 +48,40 @@ function startProcess() {
 
 function subscribeToManager() {
   var service = processingQueue.shift()
+    , uptime = 0
+    ;
+  if (service !== undefined) {
+    var host = service.addresses[0]
+    ;
+
+    client = OnlineHelper.createOnlineHelper(service.txtRecord.availabilityPort, host);
+
+    client.on('notAccepting', startProcess);
+
+    // TODO: check to see if already started
+    // if it has, wait until it comes up again, by queing and sending old workunits - if timeout is reached then fetch new manager
+    // else if it hasn't start looking for new unit);
+    client.on('offline', startProcess);
+
+    client.on('init', function() {
+      zmqConnect(service);
+    });
+
+  } else {
+    startProcess();
+  }
+}
+
+function zmqConnect(service) {
+  var uri = 'tcp://' + service.addresses[0] + ':' + service.txtRecord.zmqPort
     , socket = context.socket('req')
     ;
 
-  socket.connect('tcp://' + service.addresses[0] + ':' + service.port);
-  console.log('trying:' + 'tcp://' + service.addresses[0] + ':' + service.port);
-  socket.send("conect");
+  socket.connect(uri);
+  console.log('connected to -> ' + uri);
+  connectedTo = uri;
   socket.on('message', function(buf) {
-    var header = buf.toString('utf-8', 0, 6);
-    switch(header) {
-      case 'conect':
-        if (buf.toString() === header + 'Good') {
-          console.log(buf.toString());
-          console.log('--> ' + service.addresses[0] + ':' + service.port);
-          onSuccessfulSocketConnection(socket);
-        } else if (buf.toString() === header + 'Bad') {
-          console.log('failed.');
-          socket.close();
-          startProcess();
-        }
-        break;
-      case 'beat..':
-        // online Manager keep at it boy!
-        break;
-    }
+    console.log(buf.toString());
+    // setTimeout(function() {socket.send('{}');}, 4000);
   });
-  // connect to receiver and test to see if it is s-ending tasks
 }
-
-function onSuccessfulSocketConnection(socket) {
-  console.log('connected!!');
-}
-// handle ^C
-process.on('SIGINT', function() {
-  process.exit();
-});
