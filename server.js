@@ -1,30 +1,47 @@
 require('console-trace');
 console.traceAlways = true;
 
-var socket = require('socket.io')
-  // , io = socket.listen(8282)
+var socketio = require('socket.io')
+  , io = socketio.listen(8282)
   , managers = require('./lib/discovery').managers
   , context  = require('zmq')
   , OnlineHelper = require('./lib/onlineHelper')
   , processingQueue = []
   , connectedTo = null
   , client
+  , workunit = ''
   ;
-
-socket.identity = 'distributor' + process.pid;
 
 /**
  *  Connect to parent Manager, with port.
  */
 // receiver.connect('tcp://localhost:60000');
+function startSocketIO(zmqSocket) {
+  io.sockets.on('connection', function (socketio) {
+    socketio.on('message', function(message) {
+      var messageObject = JSON.parse(message);
+      // stops weird stuff from happening
+      switch (messageObject.action) {
+        case 'request':
+          socketioSend({"action": "workunit", "id":"1337", "data": workunit});
+          break;
+        case 'completed':
+          zmqSocket.send();
+          break;
+        default:
+          socketioSend({"action": "message", "data": "Error!"});
+          break;
+      }
 
-// io.sockets.on('connection', function (socket) {
-//   socket.emit('news', { hello: 'world' });
-//   socket.on('my other event', function (data) {
-//     console.log(data);
-//   });
-// });
-startProcess();
+      // abstracts the JSON.stringify, should be done in socket.io?
+      function socketioSend(obj) {
+        socketio.send(JSON.stringify(obj));
+      }
+    });
+    socketio.on('disconnect', function () { });
+  });
+}
+
 managers.on('serviceUp', function(service) {
   //if (isNaN(service.txtRecord.taskId) /* && within date && not associated with something */) {
     // console.log(service); process.exit();
@@ -74,15 +91,21 @@ function subscribeToManager() {
 
 function zmqConnect(service) {
   var uri = 'tcp://' + service.addresses[0] + ':' + service.txtRecord.zmqPort
-    , socket = context.socket('req')
+    , zmqSocket = context.socket('req')
     ;
-
-  socket.connect(uri);
+  zmqSocket.identity = 'distributor' + process.pid;
+  zmqSocket.connect(uri);
   console.log('connected to -> ' + uri);
   connectedTo = uri;
-  setTimeout(function() {socket.send('object{"action":"requestTask"}');}, 4000);
-  socket.on('message', function(buf) {
-    console.log(buf.toString());
-    // setTimeout(function() {socket.send('{}');}, 4000);
+  zmqSocket.send('{"action":"requestWorkunit"}');
+  zmqSocket.on('message', function(buf) {
+    var obj = JSON.parse(buf.toString());
+    if (obj.type === 'workunit') {
+      workunit = obj.data;
+      console.log(workunit.length);
+    }
   });
+  startSocketIO(zmqSocket);
 }
+
+startProcess();
