@@ -13,7 +13,8 @@
   "dependencies": {
     "socket.io": "*",
     "zmq": "2.0.X",
-    "console-trace": "*"
+    "console-trace": "*",
+    "mdns": "*"
   },
   "devDependencies": {},
   "optionalDependencies": {},
