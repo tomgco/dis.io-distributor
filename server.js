@@ -1,5 +1,5 @@
 require('console-trace');
-console.traceAlways = true;
+// console.traceAlways = true;
 
 var socketio = require('socket.io')
   , io = socketio.listen(8282)
@@ -9,33 +9,40 @@ var socketio = require('socket.io')
   , processingQueue = []
   , connectedTo = null
   , client
-  , workunit = ''
+  , Workunit = require('./lib/workunit')
   ;
+
+io.set("log level", 1);
 
 /**
  *  Connect to parent Manager, with port.
  */
 // receiver.connect('tcp://localhost:60000');
-function startSocketIO(zmqSocket) {
+function startSocketIO(workunit, zmqSocket) {
   io.sockets.on('connection', function (socketio) {
     socketio.on('message', function(message) {
-      var messageObject = JSON.parse(message);
-      // stops weird stuff from happening
-      switch (messageObject.action) {
+      console.log(message);
+      switch (message.action) {
         case 'request':
-          socketioSend({"action": "workunit", "id":"1337", "data": workunit});
+          socketio.json.send({
+              "action": "workunit"
+            , "id": workunit.getId()
+            , "data": workunit.get()
+          });
+          break;
+        case 'getPayload':
+          workunit.retrievePayload(function(payload) {
+            console.log(payload);
+            socketio.json.send({'action': 'payload', 'data': payload});
+          });
           break;
         case 'completed':
-          zmqSocket.send();
+          zmqSocket.send(JSON.stringify(message));
+          // socketio.json.send({"action": "workunit", "id":"1337", "data": workunit.get()}); // new task
           break;
         default:
-          socketioSend({"action": "message", "data": "Error!"});
+          socketio.json.send({"action": "message", "data": "Unknown action: " + message.action });
           break;
-      }
-
-      // abstracts the JSON.stringify, should be done in socket.io?
-      function socketioSend(obj) {
-        socketio.send(JSON.stringify(obj));
       }
     });
     socketio.on('disconnect', function () { });
@@ -44,7 +51,6 @@ function startSocketIO(zmqSocket) {
 
 managers.on('serviceUp', function(service) {
   //if (isNaN(service.txtRecord.taskId) /* && within date && not associated with something */) {
-    // console.log(service); process.exit();
     processingQueue.push(service);
 });
 
@@ -78,7 +84,10 @@ function subscribeToManager() {
     // TODO: check to see if already started
     // if it has, wait until it comes up again, by queing and sending old workunits - if timeout is reached then fetch new manager
     // else if it hasn't start looking for new unit);
-    client.on('offline', startProcess);
+    client.on('offline', function() {
+      startProcess();
+      console.log('client down.');
+    });
 
     client.on('init', function() {
       zmqConnect(service);
@@ -97,15 +106,25 @@ function zmqConnect(service) {
   zmqSocket.connect(uri);
   console.log('connected to -> ' + uri);
   connectedTo = uri;
+  //TODO: check for existing results if found send.
   zmqSocket.send('{"action":"requestWorkunit"}');
   zmqSocket.on('message', function(buf) {
     var obj = JSON.parse(buf.toString());
-    if (obj.type === 'workunit') {
-      workunit = obj.data;
-      console.log(workunit.length);
+    switch(obj.action) {
+      case 'workunit':
+        var workunit = Workunit.createWorkunit(obj.id, obj.workunit, obj.payloads);
+        startSocketIO(workunit, zmqSocket);
+        break;
+      case 'saved':
+        // log that it was saved and clear queue items that saved.
+        break;
+      case 'notSaved':
+        // add to a queue to be sent with next iteration
+        break;
+      default:
+        break;
     }
   });
-  startSocketIO(zmqSocket);
 }
 
 startProcess();
