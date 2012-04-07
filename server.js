@@ -27,8 +27,7 @@ io.set("log level", 0);
  *  Connect to parent Manager, with port.
  */
 
-function startSocketIO(workunit) {
-
+function startSocketIO() {
   io.sockets.on('connection', function (socketio) {
     socketioOnline = true;
     socketio.on('message', function(message) {
@@ -55,7 +54,9 @@ function startSocketIO(workunit) {
           break;
         case 'completed':
           socket.send(JSON.stringify(message));
-          // socketio.json.send({"action": "workunit", "id":"1337", "data": workunit.get()}); // new task
+          workunit.retrievePayload(function(payload) {
+            socketio.json.send({'action': 'payload', 'data': payload});
+          });
           break;
         default:
           socketio.json.send({"action": "message", "data": "Unknown action: " + message.action });
@@ -102,6 +103,7 @@ function subscribeToManager() {
     // if it has, wait until it comes up again, by queing and sending old workunits - if timeout is reached then fetch new manager
     // else if it hasn't start looking for new unit);
     client.on('offline', function() {
+      offlineMessageQueue = [];
       if (zmqOnline) {
         zmqSocket.close();
       }
@@ -129,18 +131,18 @@ function zmqConnect(service) {
   zmqOnline = true;
   connectedTo = uri;
   //TODO: check for existing results if found send.
-  if (offlineMessageQueue.length > 0) {
-    offlineMessageQueue.forEach(function(value) {
-      zmqSocket.send(value);
-    });
-  }
+  process.nextTick(function(){
+    while (offlineMessageQueue.length > 0) {
+      zmqSocket.send(offlineMessageQueue.shift());
+    }
+  });
   zmqSocket.send('{"action":"requestWorkunit"}');
   zmqSocket.on('message', function(buf) {
     var obj = JSON.parse(buf.toString());
     switch(obj.action) {
       case 'workunit':
         workunit = Workunit.createWorkunit(obj.id, obj.workunit, obj.payloads);
-        if (!socketioOnline) startSocketIO(workunit);
+        if (!socketioOnline) startSocketIO();
         break;
       case 'saved':
         workunit.completePayload(obj.data.id);
