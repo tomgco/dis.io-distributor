@@ -16,9 +16,10 @@ var socketio = require('socket.io')
   , zmqSocket
   , zmqOnline = false
   , socketioOnline = false
-  , offlineMessageQueue = []
+  , offlineMessageQueue = [] // will cause memory to exhaust
   , packageJSON = require('./package.json')
   , appVersion = 'v' + packageJSON.version.split('.').slice(0, -1).join('-')
+  , savedStates = {}
   ;
 
 io.set("log level", 0);
@@ -49,14 +50,29 @@ function startSocketIO() {
           break;
         case 'getPayload':
           workunit.retrievePayload(function(payload) {
+            if (savedStates[payload.id] !== undefined) {
+              payload = savedStates[payload.id].state;
+            }
+            delete savedStates[payload.id];
             socketio.json.send({'action': 'payload', 'data': payload});
           });
           break;
         case 'completed':
           socket.send(JSON.stringify(message));
+          delete savedStates[message.id];
           workunit.retrievePayload(function(payload) {
+            if (savedStates[payload.id] !== undefined) {
+              payload.payload = savedStates[payload.id].state;
+            }
+            delete savedStates[payload.id];
             socketio.json.send({'action': 'payload', 'data': payload});
           });
+          break;
+        case 'saveState':
+          if (workunit.getId() == message.workunitId) {
+            delete message.action;
+            savedStates[message.id] = message;
+          }
           break;
         default:
           socketio.json.send({"action": "message", "data": "Unknown action: " + message.action });
