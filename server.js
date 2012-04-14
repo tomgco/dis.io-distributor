@@ -20,6 +20,7 @@ var socketio = require('socket.io')
   , packageJSON = require('./package.json')
   , appVersion = 'v' + packageJSON.version.split('.').slice(0, -1).join('-')
   , savedStates = {}
+  , agent = require('webkit-devtools-agent')
   ;
 
 io.set("log level", 0);
@@ -122,10 +123,10 @@ function subscribeToManager() {
       offlineMessageQueue = [];
       if (zmqOnline) {
         zmqSocket.close();
+        startProcess();
+        console.log('client down.');
       }
       zmqOnline = false;
-      startProcess();
-      console.log('client down.');
     });
 
     client.on('init', function() {
@@ -157,7 +158,9 @@ function zmqConnect(service) {
     var obj = JSON.parse(buf.toString());
     switch(obj.action) {
       case 'workunit':
+        console.time('CreateWorkunit');
         workunit = Workunit.createWorkunit(obj.id, obj.workunit, obj.payloads);
+        console.timeEnd('CreateWorkunit');
         if (!socketioOnline) startSocketIO();
         break;
       case 'saved':
@@ -169,6 +172,7 @@ function zmqConnect(service) {
         // add to a queue to be sent with next iteration
         break;
       default:
+        console.error(obj);
         break;
     }
   });
@@ -188,3 +192,5 @@ function startDiscovery(port) {
   var ad = mdns.createAdvertisement(mdns.udp('disio-distribu', appVersion), port, {'txtRecord': { name: 'dis.io distributor' }});
   ad.start();
 }
+
+console.log('This process is pid ' + process.pid);
