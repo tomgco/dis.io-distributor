@@ -123,10 +123,10 @@ function subscribeToManager() {
       offlineMessageQueue = [];
       if (zmqOnline) {
         zmqSocket.close();
-        startProcess();
-        console.log('client down.');
       }
       zmqOnline = false;
+      startProcess();
+      console.log('client down.');
     });
 
     client.on('init', function() {
@@ -158,9 +158,9 @@ function zmqConnect(service) {
     var obj = JSON.parse(buf.toString());
     switch(obj.action) {
       case 'workunit':
-        console.time('CreateWorkunit');
+        console.time('RequestWorkunit');
         workunit = Workunit.createWorkunit(obj.id, obj.workunit, obj.payloads);
-        console.timeEnd('CreateWorkunit');
+        console.timeEnd('RequestWorkunit');
         if (!socketioOnline) startSocketIO();
         break;
       case 'saved':
