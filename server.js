@@ -1,4 +1,5 @@
-require('console-trace');
+// The following two commands are for tracing the origins of messages in STDOUT.
+// require('console-trace');
 // console.traceAlways = true;
 
 var socketio = require('socket.io')
@@ -24,10 +25,6 @@ var socketio = require('socket.io')
   ;
 
 io.set("log level", 0);
-
-/**
- *  Connect to parent Manager, with port.
- */
 
 function startSocketIO() {
   io.sockets.on('connection', function (socketio) {
@@ -89,11 +86,16 @@ managers.on('serviceUp', function(service) {
     processingQueue.push(service);
 });
 
+/**
+ *  Connect to parent Manager, with port.
+ * this will always try to reconnect to a manager every 3 seconds if its not associated.
+ */
 function startProcess() {
   var interval = setTimeout(function() {
     if (processingQueue.length !== 0) {
       subscribeToManager();
     } else {
+      // get all on-line managers and add to a queue to connect to.
       managers.listAll(function(err, store) {
         Object.keys(store).forEach(function(value) {
           processingQueue.push(store[value]);
@@ -108,6 +110,8 @@ function subscribeToManager() {
   var service = processingQueue.shift()
     , uptime = 0
     ;
+  // starts the process of checking if the manage is online and is accepting.
+  // if not then it will move through the list in a round-robin method.
   if (service !== undefined) {
     var host = service.addresses[0]
     ;
@@ -117,8 +121,8 @@ function subscribeToManager() {
     client.on('notAccepting', startProcess);
 
     // TODO: check to see if already started
-    // if it has, wait until it comes up again, by queing and sending old workunits - if timeout is reached then fetch new manager
-    // else if it hasn't start looking for new unit);
+    // if it has, wait until it comes up again, by queuing and sending old work units - if timeout is reached then fetch new manager
+    // else if it hasn't start looking for new unit.
     client.on('offline', function() {
       offlineMessageQueue = [];
       if (zmqOnline) {
@@ -138,6 +142,9 @@ function subscribeToManager() {
   }
 }
 
+/**
+ *  Connect to a zero mq service once it is ok to connect.
+ */
 function zmqConnect(service) {
   var uri = 'tcp://' + service.addresses[0] + ':' + service.txtRecord.zmqPort
     ;
@@ -147,7 +154,9 @@ function zmqConnect(service) {
   console.log('connected to -> ' + uri);
   zmqOnline = true;
   connectedTo = uri;
-  //TODO: check for existing results if found send.
+  // Check for existing results if found and then send.
+  // This is because sometime message can be sent when a manager is not connected.
+  // and ensure that all message will be received.
   process.nextTick(function(){
     while (offlineMessageQueue.length > 0) {
       zmqSocket.send(offlineMessageQueue.shift());
@@ -158,9 +167,11 @@ function zmqConnect(service) {
     var obj = JSON.parse(buf.toString());
     switch(obj.action) {
       case 'workunit':
+        // Time how long it takes to initialize a work unit and payloads.
         console.time('RequestWorkunit');
         workunit = Workunit.createWorkunit(obj.id, obj.workunit, obj.payloads);
         console.timeEnd('RequestWorkunit');
+        // Start the socket.io server if not already started.
         if (!socketioOnline) startSocketIO();
         break;
       case 'saved':
@@ -178,7 +189,7 @@ function zmqConnect(service) {
   });
 }
 app.listen(function() {
-  // need to publish somehow so others can connect.
+  // Publish that it is available and so that clients can connect.
   startDiscovery(app.address().port);
   startProcess();
 });
